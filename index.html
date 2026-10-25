@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Minecraft 版本库</title>
+    
+    <script src="https://cdn.bootcdn.net/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script>
+        if (typeof JSZip === 'undefined') document.write('<script src="https://lib.baomitu.com/jszip/3.10.1/jszip.min.js"><\/script>');
+        if (typeof JSZip === 'undefined') document.write('<script src="https://cdn.staticfile.net/jszip/3.10.1/jszip.min.js"><\/script>');
+        if (typeof JSZip === 'undefined') document.write('<script src="https://npm.elemecdn.com/jszip@3.10.1/dist/jszip.min.js"><\/script>');
+    </script>
+
+    <style>
+        :root { --bg: #000; --surface: #121212; --surface-var: #2A2A2A; --text: #F2F2F2; --text-var: #A0A0A0; --primary: #FFF; --on-primary: #000; --radius-l: 28px; --radius-m: 16px; --radius-s: 12px; }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; font-family: system-ui, -apple-system, sans-serif; }
+        body { background-color: var(--bg); color: var(--text); padding: 20px 16px 100px 16px; line-height: 1.5; }
+        .header h1 { font-size: 26px; font-weight: 600; }
+        .header p { font-size: 14px; color: var(--text-var); margin-top: 4px; margin-bottom: 24px; }
+        .search-box { width: 100%; padding: 16px 20px; background: var(--surface); border: 2px solid transparent; border-radius: var(--radius-m); color: var(--text); font-size: 16px; outline: none; margin-bottom: 12px; }
+        .select-trigger { width: 100%; padding: 16px 20px; background: var(--surface); border-radius: var(--radius-m); color: var(--text); font-size: 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 16px; }
+        .list-container { display: flex; flex-direction: column; gap: 12px; }
+        .card { background: var(--surface); border-radius: var(--radius-m); padding: 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+        .card-info { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+        .version-id { font-size: 18px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .version-meta { font-size: 13px; color: var(--text-var); display: flex; align-items: center; gap: 8px; }
+        .tag { font-size: 11px; padding: 3px 10px; border-radius: 6px; font-weight: 600; }
+        .tag.release { background: var(--primary); color: var(--bg); }
+        .tag.snapshot { background: var(--surface-var); color: var(--primary); }
+        .tag.old { background: #333; color: #888; }
+        .download-btn { background: var(--primary); color: var(--on-primary); border: none; padding: 12px 24px; border-radius: 100px; font-size: 15px; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+        .status-text { text-align: center; color: var(--text-var); padding: 40px 0; font-size: 15px; }
+        
+        .dialog-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 9999; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+        .dialog-overlay.show { opacity: 1; pointer-events: auto; }
+        .dialog-box { background: var(--surface); width: 85%; max-width: 340px; border-radius: var(--radius-l); padding: 24px; transform: scale(0.9); transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .dialog-overlay.show .dialog-box { transform: scale(1); }
+        .dialog-title { font-size: 20px; font-weight: 600; margin-bottom: 16px; }
+        .dialog-content { font-size: 15px; color: var(--text-var); margin-bottom: 24px; line-height: 1.6; word-break: break-all; max-height: 50vh; overflow-y: auto; }
+        
+        .type-option { padding: 16px; border-radius: var(--radius-s); text-align: center; font-size: 16px; font-weight: 500; cursor: pointer; margin-bottom: 8px; background: var(--surface-var); color: var(--text-var); }
+        .type-option.active { background: var(--primary); color: var(--on-primary); font-weight: 600; }
+        
+        .dialog-actions { display: flex; justify-content: flex-end; margin-top: 16px; gap: 12px; }
+        .dialog-btn { padding: 10px 20px; border-radius: 100px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; background: transparent; color: var(--text); }
+        .dialog-btn.primary { background: var(--primary); color: var(--on-primary); }
+        
+        .switch-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--surface-var); }
+        .switch-row:last-child { border-bottom: none; }
+        .switch-label { font-size: 15px; color: var(--text); font-weight: 500; white-space: nowrap; }
+        .switch-desc { font-size: 12px; color: var(--text-var); margin-top: 2px; white-space: nowrap; }
+        
+        .switch { position: relative; display: inline-block; width: 46px; height: 24px; flex-shrink: 0; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--surface-var); transition: .4s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: var(--text-var); transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--primary); }
+        input:checked + .slider:before { transform: translateX(22px); background-color: var(--on-primary); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Minecraft 版本库</h1>
+        <p>完整版本文件夹 ZIP 打包</p>
+    </div>
+    <input type="text" class="search-box" id="searchBox" placeholder="搜索版本号...">
+    <div class="select-trigger" onclick="openTypeDialog()">
+        <span id="selectedTypeText">所有类型 (All)</span>
+        <span>▼</span>
+    </div>
+    <div id="status" class="status-text">正在拉取数据...</div>
+    <div class="list-container" id="listContainer"></div>
+
+    <div class="dialog-overlay" id="typeDialogOverlay" onclick="closeTypeDialog(event)">
+        <div class="dialog-box" onclick="event.stopPropagation()">
+            <div class="dialog-title">选择版本类型</div>
+            <div id="typeOptionList"></div>
+            <div class="dialog-actions"><button class="dialog-btn" onclick="closeTypeDialog()">取消</button></div>
+        </div>
+    </div>
+
+    <div class="dialog-overlay" id="downloadDialogOverlay">
+        <div class="dialog-box">
+            <div class="dialog-title" id="dlTitle">提示</div>
+            <div class="dialog-content" id="dlContent"></div>
+            <div class="dialog-actions" id="dlActions"></div>
+        </div>
+    </div>
+
+    <script>
+        let allVersions = [], currentType = 'all';
+        const listContainer = document.getElementById('listContainer');
+        const searchBox = document.getElementById('searchBox');
+        const statusEl = document.getElementById('status');
+        const typeDialogOverlay = document.getElementById('typeDialogOverlay');
+        const downloadDialogOverlay = document.getElementById('downloadDialogOverlay');
+        const selectedTypeText = document.getElementById('selectedTypeText');
+
+        const types = [
+            { value: 'all', label: '所有类型 (All)' },
+            { value: 'release', label: '正式版 (Release)' },
+            { value: 'snapshot', label: '快照 (Snapshot)' },
+            { value: 'old_beta', label: '旧版 Beta' },
+            { value: 'old_alpha', label: '旧版 Alpha' }
+        ];
+
+        function openTypeDialog() {
+            document.getElementById('typeOptionList').innerHTML = types.map(t => 
+                `<div class="type-option ${currentType === t.value ? 'active' : ''}" onclick="selectType('${t.value}', '${t.label}')">${t.label}</div>`
+            ).join('');
+            typeDialogOverlay.classList.add('show');
+        }
+        function closeTypeDialog(e) { if (e && e.target !== e.currentTarget) return; typeDialogOverlay.classList.remove('show'); }
+        function selectType(value, label) { currentType = value; selectedTypeText.textContent = label; closeTypeDialog(); renderList(); }
+        
+        function showDialog(title, contentHTML, actionsHTML) {
+            document.getElementById('dlTitle').textContent = title;
+            document.getElementById('dlContent').innerHTML = contentHTML;
+            document.getElementById('dlActions').innerHTML = actionsHTML;
+            downloadDialogOverlay.classList.add('show');
+        }
+        function closeDownloadDialog() { downloadDialogOverlay.classList.remove('show'); }
+
+        function fetchManifest() {
+            return new Promise((resolve, reject) => {
+                const urls = [
+                    'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json',
+                    'https://bmclapi2.bangbang93.com/mc/game/version_manifest_v2.json'
+                ];
+                let isResolved = false, attempts = 0;
+                urls.forEach(url => {
+                    fetch(url).then(res => {
+                        if (!res.ok) throw new Error();
+                        return res.json();
+                    }).then(data => {
+                        attempts++;
+                        if (!isResolved && data && data.versions) {
+                            isResolved = true; resolve(data.versions);
+                        }
+                    }).catch(() => {
+                        attempts++;
+                        if (attempts === urls.length && !isResolved) reject(new Error());
+                    });
+                });
+            });
+        }
+
+        async function fetchResource(url) {
+            let targets = [
+                url,
+                url.replace('piston-meta.mojang.com', 'bmclapi2.bangbang93.com')
+                   .replace('launcher.mojang.com', 'bmclapi2.bangbang93.com')
+                   .replace('libraries.minecraft.net', 'bmclapi2.bangbang93.com/libraries')
+                   .replace('resources.download.minecraft.net', 'bmclapi2.bangbang93.com/assets')
+            ];
+
+            for (let target of targets) {
+                try {
+                    let res = await fetch(target);
+                    if (res.ok) return res;
+                } catch (e) {}
+            }
+            throw new Error('网络请求失败');
+        }
+
+        function renderList() {
+            const keyword = searchBox.value.trim().toLowerCase();
+            const filtered = allVersions.filter(v => {
+                const matchType = currentType === 'all' || v.type === currentType;
+                return matchType && v.id.toLowerCase().includes(keyword);
+            });
+
+            if (filtered.length === 0) {
+                listContainer.innerHTML = '<div class="status-text">没有找到匹配的版本</div>';
+                return;
+            }
+
+            listContainer.innerHTML = filtered.map(v => {
+                let tagClass = v.type === 'release' ? 'release' : (v.type === 'snapshot' ? 'snapshot' : 'old');
+                let dateStr = new Date(v.releaseTime).toLocaleDateString('zh-CN');
+                return `
+                <div class="card">
+                    <div class="card-info">
+                        <div class="version-id">${v.id}</div>
+                        <div class="version-meta">
+                            <span class="tag ${tagClass}">${v.type.toUpperCase()}</span>
+                            <span>${dateStr}</span>
+                        </div>
+                    </div>
+                    <button class="download-btn" onclick="prepareDownload('${v.id}', '${v.url}')">下载</button>
+                </div>`;
+            }).join('');
+        }
+
+        function prepareDownload(versionId, jsonUrl) {
+            const contentHTML = `
+                <div style="font-size:15px; color:var(--text); margin-bottom:12px;">
+                    即将为您打包完整的 <b>${versionId}</b> 版本。
+                </div>
+                <div style="font-size:13px; color:var(--text-var);">
+                    包含核心文件、依赖库、贴图与音效。如果遇到少部分文件下载失败，启动器启动游戏时会自动补齐，不影响导入游玩。
+                </div>
+            `;
+            const actionsHTML = `
+                <button class="dialog-btn" onclick="closeDownloadDialog()">取消</button>
+                <button class="dialog-btn primary" onclick="showSelectDialog('${versionId}', '${jsonUrl}')">确定</button>
+            `;
+            showDialog('提示', contentHTML, actionsHTML);
+        }
+
+        function showSelectDialog(versionId, jsonUrl) {
+            const contentHTML = `
+                <div style="margin-bottom: 8px; font-size: 14px;">请选择要打包的内容：</div>
+                <div class="switch-row">
+                    <div>
+                        <div class="switch-label">主文件</div>
+                        <div class="switch-desc">核心运行文件 (jar + json)</div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="chk-client" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="switch-row">
+                    <div>
+                        <div class="switch-label">文件包</div>
+                        <div class="switch-desc">依赖库文件 (libraries)</div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="chk-libs" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="switch-row">
+                    <div>
+                        <div class="switch-label">贴图包</div>
+                        <div class="switch-desc">方块、物品纹理 (textures)</div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="chk-tex" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="switch-row">
+                    <div>
+                        <div class="switch-label">音效包</div>
+                        <div class="switch-desc">背景音乐与环境音效 (sounds)</div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="chk-snd" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            `;
+            const actionsHTML = `
+                <button class="dialog-btn" onclick="closeDownloadDialog()">取消</button>
+                <button class="dialog-btn primary" onclick="startBuild('${versionId}', '${jsonUrl}')">开始打包</button>
+            `;
+            showDialog('选择下载内容', contentHTML, actionsHTML);
+        }
+
+        function startBuild(versionId, jsonUrl) {
+            if (typeof JSZip === 'undefined') {
+                showDialog('组件未加载', '打包组件 JSZip 尚未加载完成，请刷新网页后重试！', `<button class="dialog-btn primary" onclick="closeDownloadDialog()">关闭</button>`);
+                return;
+            }
+            
+            let options = {
+                client: document.getElementById('chk-client').checked,
+                libs: document.getElementById('chk-libs').checked,
+                textures: document.getElementById('chk-tex').checked,
+                sounds: document.getElementById('chk-snd').checked
+            };
+            if (!options.client && !options.libs && !options.textures && !options.sounds) return;
+            buildVersionZip(versionId, jsonUrl, options);
+        }
+
+        async function buildVersionZip(versionId, jsonUrl, options) {
+            const contentHTML = `<div id="progressText">准备获取版本配置...</div>`;
+            const actionsHTML = `<button class="dialog-btn" onclick="closeDownloadDialog()">取消</button>`;
+            showDialog('正在打包', contentHTML, actionsHTML);
+            
+            const contentEl = document.getElementById('progressText');
+            let errors = [];
+
+            try {
+                let jsonRes = await fetchResource(jsonUrl);
+                let versionJson = await jsonRes.json();
+                
+                const zip = new JSZip();
+                const folder = zip.folder(versionId);
+                folder.file(`${versionId}.json`, JSON.stringify(versionJson, null, 2));
+
+                if (options.client) {
+                    contentEl.innerHTML = '正在下载主文件...';
+                    if (versionJson.downloads && versionJson.downloads.client) {
+                        try {
+                            let jarRes = await fetchResource(versionJson.downloads.client.url);
+                            folder.file(`${versionId}.jar`, await jarRes.blob());
+                        } catch (e) { errors.push('主文件'); }
+                    }
+                }
+
+                if (options.libs) {
+                    let libs = versionJson.libraries || [];
+                    for (let i = 0; i < libs.length; i++) {
+                        let lib = libs[i];
+                        let libUrl = '';
+                        let libPath = '';
+
+                        // 修复：区分有下载路径和没有下载路径的依赖库
+                        if (lib.downloads && lib.downloads.artifact) {
+                            libUrl = lib.downloads.artifact.url;
+                            libPath = lib.downloads.artifact.path;
+                        } else if (lib.name) {
+                            // 针对老版本或冷门库，自动拼接 Maven 路径
+                            let parts = lib.name.split(':');
+                            if (parts.length >= 3) {
+                                let group = parts[0].replace(/\./g, '/');
+                                let artifact = parts[1];
+                                let version = parts[2];
+                                let classifier = parts[3] ? `-${parts[3]}` : '';
+                                let filename = `${artifact}-${version}${classifier}.jar`;
+                                libPath = `${group}/${artifact}/${version}/${filename}`;
+                                libUrl = `https://libraries.minecraft.net/${libPath}`;
+                            }
+                        }
+
+                        if (libUrl && libPath) {
+                            contentEl.innerHTML = `正在下载依赖库...<br>(${i+1}/${libs.length})`;
+                            try {
+                                let libRes = await fetchResource(libUrl);
+                                folder.file(`libraries/${libPath}`, await libRes.blob());
+                            } catch(e) {
+                                errors.push(`依赖: ${lib.name}`);
+                            }
+                        }
+                    }
+                }
+
+                if ((options.textures || options.sounds) && versionJson.assetIndex && versionJson.assetIndex.url) {
+                    contentEl.innerHTML = '正在获取资源列表...';
+                    let indexRes = await fetchResource(versionJson.assetIndex.url);
+                    let indexJson = await indexRes.json();
+                    let objects = indexJson.objects || {};
+                    let keys = Object.keys(objects);
+                    
+                    let downloadKeys = keys.filter(key => {
+                        if (key.includes('sounds/') && options.sounds) return true;
+                        if (key.includes('textures/') && options.textures) return true;
+                        return false;
+                    });
+
+                    for (let i = 0; i < downloadKeys.length; i++) {
+                        let key = downloadKeys[i];
+                        let hash = objects[key].hash;
+                        if (i % 5 === 0) {
+                            contentEl.innerHTML = `正在下载贴图/音效...<br>(${i}/${downloadKeys.length})`;
+                        }
+                        try {
+                            let assetUrl = `https://resources.download.minecraft.net/${hash.substring(0, 2)}/${hash}`;
+                            let assetRes = await fetchResource(assetUrl);
+                            folder.file(`assets/objects/${hash.substring(0, 2)}/${hash}`, await assetRes.blob());
+                        } catch(e) {
+                            errors.push(`资源: ${key}`);
+                        }
+                    }
+                    
+                    if (downloadKeys.length > 0) {
+                        folder.file(`assets/indexes/${versionId}.json`, JSON.stringify(indexJson, null, 2));
+                    }
+                }
+
+                contentEl.innerHTML = '正在生成 ZIP...<br>(请稍候)';
+                const zipBlob = await zip.generateAsync({ type: 'blob' }, function (metadata) {
+                    contentEl.innerHTML = `正在生成 ZIP...<br>${metadata.percent.toFixed(1)}%`;
+                });
+
+                const blobUrl = URL.createObjectURL(zipBlob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = `MC-${versionId}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(blobUrl);
+
+                let errMsg = errors.length > 0 ? `<br><br><span style="color:#ff5555;">有 ${errors.length} 个文件丢失（可能是原版就没提供），已跳过。</span>` : '';
+                showDialog('打包完成', `下载已开始。${errMsg}`, `<button class="dialog-btn primary" onclick="closeDownloadDialog()">关闭</button>`);
+
+            } catch (error) {
+                showDialog('打包失败', `原因：${error.message}`, `<button class="dialog-btn primary" onclick="closeDownloadDialog()">关闭</button>`);
+            }
+        }
+
+        async function init() {
+            try {
+                allVersions = await fetchManifest();
+                statusEl.style.display = 'none';
+                renderList();
+            } catch (error) {
+                statusEl.innerHTML = '获取失败，请刷新页面重试。';
+            }
+        }
+
+        searchBox.addEventListener('input', renderList);
+        init();
+    </script>
+</body>
+</html>
